@@ -1,0 +1,9 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+    # third-party deprecations, not ours
+    "ignore:datetime.datetime.utcnow:DeprecationWarning:botocore",
+    "ignore::DeprecationWarning:starlette.testclient",
+    "ignore:There is no current event loop:DeprecationWarning:mangum",
+]

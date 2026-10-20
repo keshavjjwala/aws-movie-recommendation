@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Movie recommendation system (S3 + Lambda + API Gateway + DynamoDB + Cognito)
+
+Globals:
+  Function:
+    Runtime: python3.12
+    MemorySize: 512
+    Timeout: 15
+
+Resources:
+  # Each user's movie list: one item per (userId, movieId) with a status and/or rating.
+  # On-demand billing = free tier friendly.
+  LibraryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: userId, AttributeType: S }
+        - { AttributeName: movieId, AttributeType: N }
+      KeySchema:
+        - { AttributeName: userId, KeyType: HASH }
+        - { AttributeName: movieId, KeyType: RANGE }
+
+  # Private bucket holding the trained model (model.json.gz), read by the Lambda.
+  ModelBucket:
+    Type: AWS::S3::Bucket
+
+  # Public bucket serving the static website.
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      WebsiteConfiguration:
+        IndexDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+
+  # Accounts: sign-up with email + password, email verified with a code.
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireUppercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - { Name: verified_email, Priority: 1 }
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: Your Movie Picks verification code
+        EmailMessage: "Your Movie Picks verification code is {####}"
+
+  # The website signs people in by calling Cognito directly (no client secret in a browser app).
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      RefreshTokenValidity: 30  # days
+
+  # HTTP API. Requests to /api/me/* must carry a valid Cognito token: API Gateway
+  # checks it before the Lambda runs and passes the user's id (sub) along.
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowHeaders: [authorization, content-type]
+        AllowMethods: [GET, POST, PUT, DELETE, OPTIONS]
+        MaxAge: 600
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              audience: [!Ref UserPoolClient]
+
+  # The FastAPI app, run by Mangum. API Gateway forwards every request to it.
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/lambda-src/  # staged by scripts/deploy.sh (app/ + requirements.txt only)
+      Handler: app.server.handler
+      Environment:
+        Variables:
+          LIBRARY_TABLE: !Ref LibraryTable
+          AUTH_MODE: cognito
+          MODEL_S3_BUCKET: !Ref ModelBucket
+          MODEL_S3_KEY: model.json.gz
+      Policies:  # least privilege: this table and this bucket only
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LibraryTable
+        - S3ReadPolicy:
+            BucketName: !Ref ModelBucket
+      Events:
+        Public:  # movies, search, popular: no sign-in needed
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+        Me:  # the signed-in user's list, ratings, picks and stats
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/me/{proxy+}
+            Method: ANY
+            Auth:
+              Authorizer: CognitoAuthorizer
+        MePreflight:  # browsers send CORS preflights without a token
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/me/{proxy+}
+            Method: OPTIONS
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the HTTP API
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  WebsiteUrl:
+    Description: The movie recommendation website
+    Value: !GetAtt FrontendBucket.WebsiteURL
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  ModelBucketName:
+    Value: !Ref ModelBucket
+  FrontendBucketName:
+    Value: !Ref FrontendBucket
