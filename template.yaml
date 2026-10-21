@@ -103,30 +103,27 @@ Resources:
               audience: [!Ref UserPoolClient]
 
   # The FastAPI app, run by Mangum. API Gateway forwards every request to it.
+  
   ApiFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: build/lambda-src/  # staged by scripts/deploy.sh (app/ + requirements.txt only)
+      CodeUri: build/lambda-src/
       Handler: app.server.handler
+      Role: arn:aws:iam::166952645120:role/LabRole
       Environment:
         Variables:
           LIBRARY_TABLE: !Ref LibraryTable
           AUTH_MODE: cognito
           MODEL_S3_BUCKET: !Ref ModelBucket
           MODEL_S3_KEY: model.json.gz
-      Policies:  # least privilege: this table and this bucket only
-        - DynamoDBCrudPolicy:
-            TableName: !Ref LibraryTable
-        - S3ReadPolicy:
-            BucketName: !Ref ModelBucket
       Events:
-        Public:  # movies, search, popular: no sign-in needed
+        Public:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
             Path: /{proxy+}
             Method: ANY
-        Me:  # the signed-in user's list, ratings, picks and stats
+        Me:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
@@ -134,7 +131,7 @@ Resources:
             Method: ANY
             Auth:
               Authorizer: CognitoAuthorizer
-        MePreflight:  # browsers send CORS preflights without a token
+        MePreflight:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
