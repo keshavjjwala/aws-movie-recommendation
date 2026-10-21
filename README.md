@@ -1,117 +1,256 @@
-# Movie Picks: a movie recommendation system on AWS
+# Movie Picks — Movie Recommendation System on AWS
 
-A streaming-app style movie recommender: create an account, pick a few movies you love, get personalised rows ("Because you liked Alien"), and keep a list of what you're watching, have watched, plan to watch or dropped, with stats like hours watched and favourite genres. Open any movie for its poster, plot, cast and "more like this". Built on the [MovieLens](https://grouplens.org/datasets/movielens/) dataset with a hybrid content + collaborative filtering model, with posters and details from [TMDB](https://www.themoviedb.org/).
+A personalized movie discovery platform that helps users find movies they love, discover similar titles, receive recommendations based on their preferences, and manage their personal watchlist.
 
-**AWS:** S3 (website + model), Lambda (Python API), API Gateway (with a Cognito JWT authorizer), Cognito (accounts), DynamoDB (movie lists), IAM, deployed with AWS SAM (CloudFormation). It also runs fully on your laptop, using Amazon's DynamoDB Local Docker image and a small built-in account system in place of Cognito.
+**Live Demo:** [Open Movie Picks](http://movie-recommender-frontendbucket-dic5xttnloqu.s3-website-us-east-1.amazonaws.com)
 
-See [docs/architecture.md](docs/architecture.md) for the diagram, what each AWS service does, and how the recommendations are computed.
+**Repository:** [aws-movie-recommendation](https://github.com/keshavjjwala/aws-movie-recommendation)
 
-## Run it locally
+## Overview
 
-Needs Python 3.12+ and Docker.
+Movie Picks is a full-stack movie recommendation application built with Python, machine learning, and AWS. It combines content-based filtering with collaborative filtering to generate personalized movie recommendations.
+
+Users can create an account, explore movies, rate titles, maintain a watchlist, and discover recommendations based on their interests and activity.
+
+The application uses a serverless AWS architecture for its backend, with Amazon S3 hosting the frontend and storing the recommendation model.
+
+## Features
+
+- **Personalized Recommendations:** Discover movies based on preferences and viewing activity.
+- **Movie Search:** Search for movies by title.
+- **Movie Details:** Explore posters, plot summaries, cast, directors, ratings, and other available metadata.
+- **Similar Movies:** Find titles related to a selected movie.
+- **Personal Watchlist:** Track movies you plan to watch, are watching, have watched, or have dropped.
+- **Movie Ratings:** Rate movies and use your preferences to improve recommendations.
+- **User Authentication:** Sign up and sign in using Amazon Cognito in the AWS deployment.
+- **Personal Statistics:** View watchlist statistics, average ratings, time watched, and favourite genres.
+- **Cloud Deployment:** Host the application using AWS managed and serverless services.
+
+## Technology Stack
+
+| Category | Technologies |
+|---|---|
+| Frontend | HTML, CSS, JavaScript |
+| Backend | Python, FastAPI |
+| Machine Learning | Content-based filtering, collaborative filtering |
+| Authentication | Amazon Cognito |
+| API | Amazon API Gateway, AWS Lambda |
+| Database | Amazon DynamoDB |
+| Object Storage | Amazon S3 |
+| Infrastructure as Code | AWS SAM, AWS CloudFormation |
+| Local Development | Docker, DynamoDB Local |
+| Testing | pytest |
+| Data Sources | MovieLens, TMDB |
+
+## AWS Architecture
+
+The application uses the following AWS services:
+
+- **Amazon S3:** Hosts the static frontend and stores the recommendation model.
+- **AWS Lambda:** Executes the Python API without requiring a continuously running application server.
+- **Amazon API Gateway:** Exposes HTTP endpoints and routes requests to Lambda.
+- **Amazon Cognito:** Manages user authentication and issues tokens for protected API requests.
+- **Amazon DynamoDB:** Stores users' movie-library data.
+- **AWS IAM:** Controls permissions for interactions between AWS services.
+- **AWS SAM and CloudFormation:** Define, deploy, and manage the cloud infrastructure as code.
+
+### Request Flow
+
+1. A user opens the Movie Picks website.
+2. The frontend sends requests to the API Gateway endpoint.
+3. Public endpoints handle movie discovery, while protected endpoints require valid authentication.
+4. API Gateway invokes the Python backend through Lambda.
+5. The backend loads the recommendation model from S3 and accesses DynamoDB when user-specific data is needed.
+6. The API returns results to the frontend for display.
+
+## Recommendation Engine
+
+Movie Picks combines content-based and collaborative filtering techniques to generate recommendations.
+
+- **Content-based filtering** uses movie characteristics and similarity to identify related titles.
+- **Collaborative filtering** uses preference and rating patterns to support personalized recommendations.
+- **User activity** helps the application tailor recommendations and maintain a personal movie library.
+
+The model is prepared offline and stored as a compressed JSON artifact. The deployed backend loads the model for inference.
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.12 or later
+- Docker Desktop
+- Git
+- AWS CLI and AWS SAM CLI for cloud deployment
+
+### 1. Clone the repository
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-
-python train.py            # downloads MovieLens (~1 MB) and builds model/model.json.gz
-./scripts/run-local.sh     # starts DynamoDB Local in Docker + the app
+git clone https://github.com/keshavjjwala/aws-movie-recommendation.git
+cd aws-movie-recommendation
 ```
 
-Open <http://localhost:8000>, create an account (any email works locally; nothing is sent) and tap a few movies you love.
+### 2. Install development dependencies
 
-### Add real posters and movie details (recommended)
+Create and activate a virtual environment.
 
-Without this step the app shows generated genre posters and no plot/cast.
+**Windows PowerShell**
 
-1. Get a free TMDB key: sign up at [themoviedb.org](https://www.themoviedb.org/signup), then Settings → API. Either the "API Key" or the "API Read Access Token" works.
-2. `cp .env.example .env` and paste it after `TMDB_API_KEY=`. `.env` is git-ignored.
-3. Fetch the details and rebuild the model:
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+```
 
-   ```bash
-   python enrich.py           # ~3 minutes for 9,700 movies; safe to stop and rerun
-   python train.py
-   ```
+**macOS / Linux**
 
-4. Restart `./scripts/run-local.sh`.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
 
-The key is only used by `enrich.py` on your machine. It is never sent to the browser, put in the model, or deployed to AWS.
-Interactive API docs: <http://localhost:8000/docs>.
+### 3. Prepare the recommendation model
 
-Stop DynamoDB Local with `docker compose down` (add `-v` to also delete local accounts and lists).
+```bash
+python train.py
+```
 
-## Tests
+This downloads the MovieLens dataset and generates the model artifact at `model/model.json.gz`.
+
+### 4. Start the local application
+
+```bash
+./scripts/run-local.sh
+```
+
+On Windows, use the repository's provided PowerShell-compatible workflow or run the required commands through Git Bash/WSL.
+
+The local setup uses Docker to run DynamoDB Local and provides a local authentication mechanism for development.
+
+Open:
+
+```text
+http://localhost:8000
+```
+
+Create a local account and start exploring movies.
+
+### Optional: Enrich movie metadata
+
+To fetch additional posters, plots, and cast information, configure a TMDB API key in your local `.env` file using `.env.example` as a template. Then run:
+
+```bash
+python enrich.py
+python train.py
+```
+
+The TMDB key is used by the local enrichment script. Never commit API keys or credentials to GitHub.
+
+## Deploying to AWS
+
+The project includes an AWS SAM template that defines the application infrastructure.
+
+For a standard AWS account, configure the AWS CLI and SAM CLI, then follow the deployment instructions in [`docs/deploy-aws.md`](docs/deploy-aws.md).
+
+The repository includes deployment scripts:
+
+```bash
+./scripts/deploy.sh
+```
+
+To remove the deployed application when it is no longer needed:
+
+```bash
+./scripts/destroy.sh
+```
+
+**AWS Academy Learner Lab:** Lab accounts may restrict IAM role creation and certain AWS services. The deployment template and configuration may need to use the existing `LabRole`. Follow the repository's deployment guide and your lab's restrictions.
+
+> **Important:** The destroy script removes deployed resources and can delete user accounts and application data. Review its effects before running it.
+
+## API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/movies/search?q=matrix` | Search movies by title |
+| GET | `/api/movies/popular` | Retrieve popular movies |
+| GET | `/api/movies/{id}` | Get movie details |
+| GET | `/api/movies/{id}/similar` | Find similar movies |
+| GET | `/api/me/library` | Retrieve the user's movie library |
+| PUT | `/api/me/library/{id}/status` | Update a movie's watch status |
+| PUT | `/api/me/library/{id}/rating` | Rate a movie |
+| DELETE | `/api/me/library/{id}/rating` | Remove a movie rating |
+| DELETE | `/api/me/library/{id}` | Remove a movie from the library |
+| GET | `/api/me/recommendations` | Retrieve personalized recommendations |
+| GET | `/api/me/stats` | Retrieve personal viewing statistics |
+
+Protected `/api/me/*` endpoints require a bearer token. The AWS deployment uses Cognito authentication; local development uses the local authentication mechanism.
+
+## Testing
+
+Run the automated test suite with:
 
 ```bash
 pytest
 ```
 
-Covers TMDB fetching (with a fake HTTP layer: rate limits, retries, resume), the training pipeline, the recommender, the movie-list store (DynamoDB mocked with moto), local accounts (password hashing, token tampering/expiry), the API (including sign-in and error cases) and the Lambda handler with real API Gateway events carrying Cognito authorizer claims.
+The tests cover recommendation logic, model preparation, movie-library storage, authentication, API behavior, and Lambda request handling.
 
-## Deploy to AWS (optional)
+## Project Structure
 
-**Step-by-step guide, including the AWS console setup and how the pieces connect: [docs/deploy-aws.md](docs/deploy-aws.md).**
-
-Needs an AWS account, the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) (run `aws configure`) and the [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
-
-```bash
-./scripts/deploy.sh        # prints the website URL at the end
-./scripts/destroy.sh       # deletes everything again
+```text
+aws-movie-recommendation/
+├── app/
+│   ├── auth.py
+│   ├── library.py
+│   ├── main.py
+│   ├── model_loader.py
+│   ├── recommender.py
+│   ├── server.py
+│   └── storage.py
+├── frontend/
+│   ├── index.html
+│   ├── style.css
+│   └── js/
+│       ├── api.js
+│       ├── auth.js
+│       ├── library.js
+│       └── views/
+├── docs/
+├── scripts/
+├── tests/
+├── model/
+├── template.yaml
+├── train.py
+├── enrich.py
+├── requirements.txt
+├── requirements-dev.txt
+├── docker-compose.yml
+└── README.md
 ```
 
-Everything fits in the AWS free tier for a demo. Run `destroy.sh` when you're done anyway.
+## Data Sources and Acknowledgements
 
-On AWS, sign-up emails a 6-digit verification code from Cognito's built-in email sender (`no-reply@verificationemail.com`; check spam). That sender allows about 50 emails a day, plenty for a demo. Destroying the stack deletes the user pool and every account in it.
+- **MovieLens:** Movie ratings and dataset information from GroupLens Research.
+- **TMDB:** Movie metadata and imagery through The Movie Database API.
 
-> AWS Academy / Learner Lab accounts can't create IAM roles. There, replace the
-> `Policies:` block of `ApiFunction` in `template.yaml` with `Role: <your LabRole ARN>`
-> and drop `--capabilities CAPABILITY_IAM` from `deploy.sh`.
+This product uses the TMDB API but is not endorsed or certified by TMDB. Review the respective data-source terms before redistributing data or imagery.
 
-## API
+## Future Improvements
 
-| Method | Path | What it does |
-|---|---|---|
-| GET | `/api/movies/search?q=matrix` | Find movies by title |
-| GET | `/api/movies/popular` | Top-rated movies (shown to new users) |
-| GET | `/api/movies/{id}` | Full details: poster, backdrop, plot, cast, director, runtime, average rating |
-| GET | `/api/movies/{id}/similar` | Movies similar to this one |
-| GET | `/api/me/library` | Your list: every movie with its status and rating, newest first |
-| PUT | `/api/me/library/{id}/status` | Body `{"status": "watching"}`: `plan_to_watch`, `watching`, `watched` or `dropped` |
-| PUT | `/api/me/library/{id}/rating` | Body `{"rating": 4.5}` (0.5–5). Marks the movie watched if it wasn't listed or was only planned |
-| DELETE | `/api/me/library/{id}/rating` | Remove the rating, keep the movie on your list |
-| DELETE | `/api/me/library/{id}` | Remove the movie from your list |
-| GET | `/api/me/recommendations` | Personalised recommendations |
-| GET | `/api/me/stats` | Counts per status, average rating, minutes watched, top genres |
-| POST | `/api/auth/local/signup`, `/api/auth/local/login` | Local development only: body `{"email", "password"}` |
+Potential areas for further development include:
 
-`/api/me/*` needs `Authorization: Bearer <token>`: a Cognito ID token on AWS, or the token from the local login locally. Without one the API answers 401.
+- Improved recommendation evaluation and ranking.
+- More detailed application monitoring and performance metrics.
+- Enhanced accessibility and responsive design.
+- Automated deployment and testing workflows.
+- Additional AWS security and observability improvements.
 
-All list endpoints accept `?limit=`.
+## Author
 
-## Project layout
+**Keshav Jhunjhunwala**
 
-```
-app/
-  recommender.py   recommendation logic (pure Python)
-  library.py       list → recommender input, profile stats
-  storage.py       movie lists in DynamoDB
-  auth.py          who is signed in (Cognito claims, or local accounts)
-  model_loader.py  loads the model from disk or S3
-  main.py          HTTP API (FastAPI)
-  server.py        wiring from env vars; Lambda handler
-frontend/          static website (no build step)
-  js/auth.js       sign-in: Cognito calls, or local accounts
-  js/views/        sign in/up, welcome, home, movie details, search, my list
-enrich.py          offline: fetches posters/details from TMDB
-train.py           offline model builder (merges the TMDB data in)
-template.yaml      AWS infrastructure (SAM)
-docker-compose.yml DynamoDB Local
-scripts/           run-local.sh, deploy.sh, destroy.sh
-tests/
-```
+Computer Science and Engineering student interested in cloud computing, machine learning, and full-stack development.
 
-## Data credits
-
-Movie data and images from [TMDB](https://www.themoviedb.org/). This product uses the TMDB API but is not endorsed or certified by TMDB.
-
-F. Maxwell Harper and Joseph A. Konstan. 2015. The MovieLens Datasets: History and Context. ACM TiiS 5, 4: 19. Used under the GroupLens terms for non-commercial/educational use.
+- GitHub: [@keshavjjwala](https://github.com/keshavjjwala)
+- Project: [Movie Picks](https://github.com/keshavjjwala/aws-movie-recommendation)
